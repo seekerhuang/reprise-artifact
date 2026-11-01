@@ -1,5 +1,7 @@
 import copy
 import time
+from empirical.saint.schedules import positive_phase
+from main.recipes import RECIPES
 VERSION = 'R74_Yelp_terminal_selected_native_Adam_beta1_07_v1'
 SELECTED = ('conv_layers.2.params.2', 'conv_layers.2.params.1')
 UNUSED = ('classifier.params.1', 'classifier.params.2')
@@ -11,7 +13,8 @@ BASE_OPTIONS = dict(lr=0.015, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, ams
 _ATTRIBUTE = '_r74_terminal_selected_beta1_contract'
 
 def policy():
-    return dict(version=VERSION, optimizer='Unreplaced native torch.optim.Adam', selected_parameter_names=list(SELECTED), selected_parameter_elements=1024, selected_beta1=0.7, selected_epsilon=0.0001, nonselected_beta1=0.9, beta2=0.999, epsilon=1e-08, installation='From the loaded actual native initial tensor and empty Adam, before engine construction/first update', group_order=['all_other_native_parameters_including_two_unused', 'terminal_selected_affine'], group_parameter_counts=[22, 2], unused_parameter_names=list(UNUSED), declared_full_run_parameter_clocks='Every original active parameter is required to get16200 native updates; the two unused parameters must keep empty state/clock0', unchanged='All original model/core/query/objective, native P/L/C clipping supports, drop.05, .015/.01/.0075 LR events, late uniform positive1.1, raw bank, TRAIN RNG, full evaluation and strict native.5 VALID selector', cost='Installation is nested in required actual_initial_load_and_engine. Native two-group dispatch is inside original TRAIN outer time. Nested setup telemetry must not be added again.', interpretation='The fixed-gradient two-submission parameter-response coefficient beta1*(1-beta1) changes .09 to .21 under a fixed denominator; this is conditional, not a claim of9x total action or a quality guarantee')
+    assert positive_phase.ALPHA == RECIPES['Yelp-SAINT']['late_positive_weight']
+    return dict(version=VERSION, optimizer='Unreplaced native torch.optim.Adam', selected_parameter_names=list(SELECTED), selected_parameter_elements=1024, selected_beta1=0.7, selected_epsilon=0.0001, nonselected_beta1=0.9, beta2=0.999, epsilon=1e-08, installation='From the loaded actual native initial tensor and empty Adam, before engine construction/first update', group_order=['all_other_native_parameters_including_two_unused', 'terminal_selected_affine'], group_parameter_counts=[22, 2], unused_parameter_names=list(UNUSED), declared_full_run_parameter_clocks='Every original active parameter is required to get16200 native updates; the two unused parameters must keep empty state/clock0', unchanged=f'All original model/core/query/objective, native P/L/C clipping supports, drop.05, .015/.01/.0075 LR events, late uniform positive{positive_phase.ALPHA:g}, raw bank, TRAIN RNG, full evaluation and strict native.5 VALID selector', cost='Installation is nested in required actual_initial_load_and_engine. Native two-group dispatch is inside original TRAIN outer time. Nested setup telemetry must not be added again.', interpretation='The fixed-gradient two-submission parameter-response coefficient beta1*(1-beta1) changes .09 to .21 under a fixed denominator; this is conditional, not a claim of9x total action or a quality guarantee')
 
 def _options(group):
     return {k: copy.deepcopy(v) for (k, v) in group.items() if k != 'params'}

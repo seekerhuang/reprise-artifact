@@ -213,7 +213,7 @@ def run(args, recipe):
                 else:
                     logits = refreshed
                     threshold = 0.45 if dataset == 'yelp' else 0.5
-                    valid = score(logits[data.val_mask], data.y[data.val_mask], threshold)
+                    valid = score(logits[data.val_mask], data.y[data.val_mask])
                     test = score(logits[data.test_mask], data.y[data.test_mask], threshold)
                     delivered = model
                 output.observe(delivered, updates, timer.seconds - refresh.seconds + delivery.seconds, valid, test)

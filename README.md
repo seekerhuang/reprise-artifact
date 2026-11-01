@@ -88,4 +88,6 @@ tests/
     iglu_lmc.py        IGLU and LMC
     saint.py           GraphSAINT
   tensors/             Tensor checks for all configurations
+appendix/
+  appendix-proofs.pdf
 ```

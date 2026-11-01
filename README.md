@@ -89,5 +89,5 @@ tests/
     saint.py           GraphSAINT
   tensors/             Tensor checks for all configurations
 appendix/
-  appendix-proofs.pdf
+  appendix-proofs.pdf  Proofs for the paper
 ```

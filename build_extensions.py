@@ -9,6 +9,8 @@ from torch.utils.cpp_extension import CUDA_HOME, load
 
 
 def main():
+    if CUDA_HOME is None:
+        raise RuntimeError('CUDA toolkit with nvcc is required')
     root = Path(__file__).resolve().parent
     subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-build-isolation',
                     str(root / 'empirical/vendor/gas')], check=True)
@@ -18,8 +20,6 @@ def main():
     source = root / 'main/native'
     build = source / 'build'
     build.mkdir(exist_ok=True)
-    if CUDA_HOME is None:
-        raise RuntimeError('CUDA toolkit with nvcc is required')
     library = load(name='reprise_dgl_tensoradapter', sources=[str(source / 'torch_adapter.cpp')],
                    extra_include_paths=[str(source), str(Path(CUDA_HOME) / 'include')],
                    extra_cflags=['-O3', '-DDGL_USE_CUDA'],

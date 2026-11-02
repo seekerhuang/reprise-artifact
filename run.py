@@ -2,18 +2,21 @@ import argparse
 import os
 from pathlib import Path
 
-from main.recipes import RECIPES
+from main.recipes import DIRECT_CONFIGS, RECIPES
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True, choices=RECIPES)
+    parser.add_argument('--method', choices=('reprise', 'direct'), default='reprise')
     parser.add_argument('--data-dir', type=Path, default=Path('data'))
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--initialization', type=int, choices=(1, 2, 3), default=1)
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--threads', type=int, default=4)
     args = parser.parse_args()
+    if args.method == 'direct' and args.config not in DIRECT_CONFIGS:
+        parser.error('--method direct supports ' + ', '.join(DIRECT_CONFIGS))
     if RECIPES[args.config]['family'] == 'saint':
         os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
     import torch

@@ -25,6 +25,7 @@ def refresh(model, loader):
 
 
 def run(args, recipe):
+    direct = getattr(args, 'method', 'reprise') == 'direct'
     device = torch.device(args.device)
     timer = Timer(device)
     compile_native(PNA)
@@ -49,7 +50,11 @@ def run(args, recipe):
             dict(params=model.reg_modules.parameters(), weight_decay=0.0),
             dict(params=model.nonreg_modules.parameters(), weight_decay=0.0),
         ], lr=0.005)
-        engine = Training(model, optimizer, 'A')
+        if direct:
+            from empirical.pna.direct import Direct
+            engine = Direct(model, optimizer)
+        else:
+            engine = Training(model, optimizer, 'A')
         rng = load_initial(model, args)
         for group in optimizer.param_groups:
             group['lr'] = recipe['lr']
@@ -66,16 +71,19 @@ def run(args, recipe):
         for _ in range(recipe['epochs']):
             with timer:
                 set_rate(optimizer, recipe, engine.visits)
-                for index, (batch, core, ids, _offset, _count) in enumerate(train):
-                    host_mask = batch.train_mask[:core]
-                    count = int(host_mask.sum())
-                    if not count:
-                        continue
-                    engine.block(batch.x.to(device), batch.adj_t.to(device), core, ids,
-                                 batch.y[:core].to(device), host_mask.to(device), criterion,
-                                 label_count=count)
-                    if index + 1 >= recipe['max_steps'] and index + 1 < len(train):
-                        break
+                for _ in range(2 if direct else 1):
+                    for index, (batch, core, ids, _offset, _count) in enumerate(train):
+                        host_mask = batch.train_mask[:core]
+                        count = int(host_mask.sum())
+                        if not count:
+                            continue
+                        engine.block(batch.x.to(device), batch.adj_t.to(device), core, ids,
+                                     batch.y[:core].to(device), host_mask.to(device), criterion,
+                                     label_count=count)
+                        if index + 1 >= recipe['max_steps'] and index + 1 < len(train):
+                            break
+                if direct:
+                    optimizer.zero_grad(set_to_none=True)
                 average.capture(model, engine.visits)
                 current_refresh = Timer(device)
                 with current_refresh:

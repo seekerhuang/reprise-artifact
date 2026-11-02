@@ -66,6 +66,7 @@ def run(args, recipe):
     timer = Timer(device)
     dataset = recipe['dataset']
     ppi = dataset == 'ppi'
+    direct = getattr(args, 'method', 'reprise') == 'direct'
     with timer:
         raw = load(dataset, args.data_dir, 'train' if ppi else None)
         data = _data(raw, dataset in ('reddit2', 'yelp'))
@@ -120,9 +121,12 @@ def run(args, recipe):
             from empirical.gas.ppi.ppi_radial_recovery_graph_v1 import adapt
             from empirical.gas.ppi.ppi_terminal_beta import install
             from empirical.gas.ppi.ppi_sma21 import CausalSMA21
-            ppi_radial.RadialFeedback = adapt(ppi_radial.RadialFeedback, total_contexts=4500)
             install(model, optimizer, beta1=recipe['terminal_beta1'])
-            train_epoch = ppi_training.make_train(None, 'prefix', 2)
+            if direct:
+                from empirical.gas.ppi.direct import train as train_epoch
+            else:
+                ppi_radial.RadialFeedback = adapt(ppi_radial.RadialFeedback, total_contexts=4500)
+                train_epoch = ppi_training.make_train(None, 'prefix', 2)
             average = CausalSMA21(model, device)
         else:
             if dataset == 'flickr':

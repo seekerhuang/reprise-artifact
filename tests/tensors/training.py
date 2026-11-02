@@ -1,3 +1,4 @@
+import csv
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -24,6 +25,8 @@ def prepare(name, recipe, directory):
                col=columns, train_mask=ids < train_end,
                val_mask=(ids >= train_end) & (ids < valid_end), test_mask=ids >= valid_end)
     raw.update(sample_rowptr=raw['rowptr'], sample_col=raw['col'])
+    if dataset == 'ppi':
+        raw['train_mask'] = torch.ones(n, dtype=torch.bool)
     torch.save(dict(train=raw, val=raw, test=raw) if dataset == 'ppi' else raw,
                directory / (dataset + '.pt'))
     if dataset in parts:
@@ -42,7 +45,7 @@ def prepare(name, recipe, directory):
     return initial, set(dict(model.named_parameters()))
 
 
-def check(name, device):
+def check(name, device, method='reprise'):
     recipe = dict(RECIPES[name])
     recipe.update(updates=4, eval_every=2, epochs=5 if name == 'Yelp-GCN' else 1)
     if recipe['family'] == 'sage':
@@ -51,7 +54,7 @@ def check(name, device):
         directory = Path(temporary)
         initial, parameters = prepare(name, recipe, directory)
         args = SimpleNamespace(config=name, data_dir=directory, out=directory / 'output',
-                               initialization=1, device=device, threads=2)
+                               initialization=1, device=device, threads=2, method=method)
         if recipe['family'] in ('top', 'products_gcn', 'sage'):
             from main.train import run
         elif recipe['family'] == 'lmc':
@@ -61,7 +64,17 @@ def check(name, device):
         else:
             from empirical.gas.train import run
         run(args, recipe)
-        actual = torch.load(args.out / 'best.pt', map_location='cpu', weights_only=False)['model']
+        checkpoint = torch.load(args.out / 'best.pt', map_location='cpu', weights_only=False)
+        if method == 'direct':
+            expected = 2 * recipe['max_steps'] if recipe['family'] in ('ppi', 'pna') else recipe['updates']
+            with (args.out / 'trajectory.csv').open() as stream:
+                assert int(list(csv.DictReader(stream))[-1]['updates']) == expected
+        actual = checkpoint['model']
+        if method == 'direct':
+            for key, value in actual.items():
+                if key.endswith('num_batches_tracked'):
+                    expected = 0 if name == 'arxiv-TOP' and key == 'bns.2.num_batches_tracked' else checkpoint['updates']
+                    assert int(value) == expected, (key, int(value), expected)
         assert actual.keys() == initial.keys()
         changed = False
         for key, value in actual.items():

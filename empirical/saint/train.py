@@ -55,6 +55,7 @@ def reddit_engine_class():
 def run(args, recipe):
     if recipe['dataset'] == 'reddit2':
         return run_reddit(args, recipe)
+    direct = getattr(args, 'method', 'reprise') == 'direct'
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'vendor/graphsaint'))
     from graphsaint.minibatch import Minibatch
     from empirical.saint import model as saint_model
@@ -92,11 +93,15 @@ def run(args, recipe):
             layer.f_dropout.p = recipe['dropout']
         terminal_beta07.BASE_OPTIONS = dict(terminal_beta07.BASE_OPTIONS, fused=True, foreach=False)
         terminal_beta07.install(model)
-        engine = engine_class()(model, 'lateA')
+        if direct:
+            from empirical.saint.core.direct import Direct
+            engine = Direct(model)
+        else:
+            engine = engine_class()(model, 'lateA')
         average = CausalAverage(model)
         ctypes.CDLL(None).srand(ctypes.c_uint(123))
         minibatch.set_sampler(dict(sampler='rw', num_root=1250, depth=2, end=75))
-        if len(minibatch.subgraphs_remaining_nodes) < recipe['updates'] // 2:
+        if not direct and len(minibatch.subgraphs_remaining_nodes) < recipe['updates'] // 2:
             raise RuntimeError('The native warm pool does not cover the training budget')
         seed(2026092901)
         ctypes.CDLL(None).srand(ctypes.c_uint(2026092901))
@@ -106,18 +111,27 @@ def run(args, recipe):
         for _ in range(recipe['epochs']):
             with timer:
                 minibatch.shuffle()
-                backend.metadata.install(minibatch)
+                if not direct:
+                    backend.metadata.install(minibatch)
                 try:
-                    route = backend.ROUTE
+                    if direct:
+                        from empirical.saint.sparse.yelp_train_strict_bmm import ROUTE as route
+                    else:
+                        route = backend.ROUTE
                     with route.strict_determinism(torch), route.install(model):
                         while not minibatch.end():
                             if not minibatch.subgraphs_remaining_nodes:
-                                raise RuntimeError('The native warm pool is exhausted')
+                                if direct:
+                                    minibatch.par_graph_sample('train')
+                                else:
+                                    raise RuntimeError('The native warm pool is exhausted')
                             nodes, matrix, weights = minibatch.one_batch('train')
                             engine.block(nodes, matrix, weights)
-                            minibatch.batch_num += 1
+                            if not direct:
+                                minibatch.batch_num += 1
                 finally:
-                    backend.metadata.close(minibatch)
+                    if not direct:
+                        backend.metadata.close(minibatch)
             with average.installed(engine.visits, lambda: sync(device)):
                 metrics = evaluation.evaluate(saint_evaluate, model, minibatch, thresholds=(0.5, 0.45))
                 output.observe(model, engine.visits, timer.seconds + average.required_seconds,
@@ -128,6 +142,7 @@ def run(args, recipe):
 
 
 def run_reddit(args, recipe):
+    direct = getattr(args, 'method', 'reprise') == 'direct'
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'vendor/graphsaint'))
     from graphsaint.minibatch import Minibatch
     from empirical.saint import model as saint_model
@@ -165,12 +180,16 @@ def run_reddit(args, recipe):
             layer.f_dropout.p = recipe['dropout']
         model.optimizer._phase2_declared_rate = dict(initial_lr=recipe['lr'], transitions=[], current_lr=recipe['lr'])
         reddit_terminal_groups.install(model, model.optimizer)
-        engine = reddit_engine_class()(model, 'lateA')
+        if direct:
+            from empirical.saint.core.direct import Direct
+            engine = Direct(model)
+        else:
+            engine = reddit_engine_class()(model, 'lateA')
         average = CausalAverage(model, after_updates=recipe['average_start'],
                                 cadence=recipe['eval_every'], window=recipe['average_window'])
         ctypes.CDLL(None).srand(ctypes.c_uint(recipe['sampler_seed']))
         minibatch.set_sampler(dict(sampler='rw', num_root=recipe['root_count'], depth=recipe['walk_depth']))
-        if len(minibatch.subgraphs_remaining_nodes) < recipe['updates'] // 2:
+        if not direct and len(minibatch.subgraphs_remaining_nodes) < recipe['updates'] // 2:
             raise RuntimeError('The native warm pool does not cover the training budget')
         seed(recipe['training_seed'])
         ctypes.CDLL(None).srand(ctypes.c_uint(recipe['training_seed']))
@@ -192,10 +211,14 @@ def run_reddit(args, recipe):
                     minibatch.shuffle()
                     while not minibatch.end():
                         if not minibatch.subgraphs_remaining_nodes:
-                            raise RuntimeError('The native warm pool is exhausted')
+                            if direct:
+                                minibatch.par_graph_sample('train')
+                            else:
+                                raise RuntimeError('The native warm pool is exhausted')
                         nodes, matrix, weights = minibatch.one_batch('train')
                         engine.block(nodes, matrix, weights)
-                        minibatch.batch_num += 1
+                        if not direct:
+                            minibatch.batch_num += 1
             with average.installed(engine.visits, lambda: sync(device)):
                 metrics = saint_evaluate(model, minibatch)
                 output.observe(model, engine.visits, timer.seconds + average.required_seconds,

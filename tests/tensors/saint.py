@@ -1,5 +1,6 @@
 import copy
 import ctypes
+import math
 from pathlib import Path
 import sys
 
@@ -90,7 +91,7 @@ def average(model, reddit):
                 parameter.copy_(original)
 
 
-def check(name, device):
+def check(name, device, method='reprise'):
     root = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(root / 'empirical/vendor/graphsaint'))
     from graphsaint.minibatch import Minibatch
@@ -106,7 +107,8 @@ def check(name, device):
     from empirical.saint.sparse import reddit_bmm_route, yelp_canonical_public_v4
     from empirical.saint.input import reddit_unit_csr_norm
     reddit = name == 'Reddit2-SAINT'
-    measurement(reddit, device)
+    if method == 'reprise':
+        measurement(reddit, device)
     device = torch.device(device)
     saint_model.args_global.gpu = args_global.gpu = device.index
     full = sp.eye(80, format='csr', dtype=np.int32)
@@ -134,19 +136,36 @@ def check(name, device):
     if reddit:
         model.optimizer._phase2_declared_rate = dict(transitions=[])
         reddit_terminal_groups.install(model, model.optimizer)
-        engine = reddit_engine_class()(model, 'lateA')
+        if method == 'direct':
+            from empirical.saint.core.direct import Direct
+            engine = Direct(model)
+        else:
+            engine = reddit_engine_class()(model, 'lateA')
         route = reddit_bmm_route
     else:
         terminal_beta07.BASE_OPTIONS = dict(terminal_beta07.BASE_OPTIONS, fused=True, foreach=False)
         terminal_beta07.install(model)
-        engine = engine_class()(model, 'lateA')
-        route = yelp_canonical_public_v4.ROUTE
+        if method == 'direct':
+            from empirical.saint.core.direct import Direct
+            from empirical.saint.sparse.yelp_train_strict_bmm import ROUTE
+            engine = Direct(model)
+            route = ROUTE
+        else:
+            engine = engine_class()(model, 'lateA')
+            route = yelp_canonical_public_v4.ROUTE
     handles, calls = compare_adam(model.optimizer)
+    rates = []
+    if method == 'direct':
+        def inspect_step(optimizer, args, kwargs):
+            rates.append([group['lr'] for group in optimizer.param_groups])
+            norm = sum(p.grad.double().square().sum() for p in model.parameters() if p.grad is not None).sqrt()
+            assert float(norm) <= 5.00001
+        handles += (model.optimizer.register_step_pre_hook(inspect_step),)
     before = {key: value.detach().clone() for key, value in model.named_parameters()}
     ctypes.CDLL(None).srand(ctypes.c_uint(2026092901 if reddit else 123))
     minibatch.set_sampler(dict(sampler='rw', num_root=2 if reddit else 4, depth=2))
     minibatch.shuffle()
-    if not reddit:
+    if not reddit and method == 'reprise':
         yelp_canonical_public_v4.metadata.install(minibatch)
     try:
         with route.strict_determinism(torch), route.install(model):
@@ -162,11 +181,21 @@ def check(name, device):
                 assert isinstance(nodes, np.ndarray) if reddit else torch.is_tensor(nodes)
                 losses = engine.block(nodes, matrix, weights)
                 assert all(torch.isfinite(loss) for loss in losses)
-        assert calls[0] == 12 and engine.optimizer_calls == 12
+        expected_calls = 4 if method == 'direct' else 12
+        assert calls[0] == expected_calls and engine.optimizer_calls == expected_calls
+        if method == 'direct':
+            if reddit:
+                rate = .0025 * (1 + math.cos(math.pi * .5 / 200))
+                assert rates[-2] == [rate, rate, rate * .25]
+                assert rates[-1] == [rate, rate, rate]
+            else:
+                rate = .0075 * (2 / 3 * (1 + math.cos(math.pi * .5 / 3780)))
+                assert rates[-2:] == [[rate, rate], [rate, rate]]
+                assert float(model._r69_late_positive_bce_scalar) == 1.25
         inactive = {'classifier.params.1', 'classifier.params.2'}
         for key, parameter in model.named_parameters():
             assert torch.isfinite(parameter).all(), key
-            assert int(model.optimizer.state.get(parameter, {}).get('step', 0)) == (0 if key in inactive else 8), key
+            assert int(model.optimizer.state.get(parameter, {}).get('step', 0)) == (0 if key in inactive else 4 if method == 'direct' else 8), key
             if key in inactive:
                 torch.testing.assert_close(parameter, before[key], rtol=0, atol=0)
         assert any(not torch.equal(parameter, before[key]) for key, parameter in model.named_parameters())
@@ -175,7 +204,7 @@ def check(name, device):
         assert np.isfinite(metrics['valid_score']) and np.isfinite(metrics['test_score'])
         average(model, reddit)
     finally:
-        if not reddit:
+        if not reddit and method == 'reprise':
             yelp_canonical_public_v4.metadata.close(minibatch)
         for handle in handles:
             handle.remove()

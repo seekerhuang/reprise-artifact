@@ -20,6 +20,7 @@ def run(args, recipe):
 
 def run_gcn(args, recipe):
     from main.models import GCN, TOPGCN
+    direct = getattr(args, 'method', 'reprise') == 'direct'
     device = torch.device(args.device)
     timer = Timer(device)
     with timer:
@@ -34,7 +35,11 @@ def run_gcn(args, recipe):
             model = TOPGCN(x.shape[1], 256, int(labels.max()) + 1, recipe['dropout']).to(device)
             rng = load_initial(model, args)
             optimizer = torch.optim.Adam(model.parameters(), lr=recipe['lr'])
-            engine = CoupledStructural(model, matrix, x, training_ids=ids['train'])
+            if direct:
+                from main.top.direct import Direct
+                engine = Direct(model, matrix, x, training_ids=ids['train'])
+            else:
+                engine = CoupledStructural(model, matrix, x, training_ids=ids['train'])
             engine.features = x.new_empty((0, x.shape[1]))
             del x
             evaluate = engine.forward
@@ -54,7 +59,7 @@ def run_gcn(args, recipe):
         restore(rng, device)
     output = Output(args.out)
     try:
-        for update in range(2, recipe['updates'] + 1, 2):
+        for update in range(1 if direct else 2, recipe['updates'] + 1, 1 if direct else 2):
             with timer:
                 model.train()
                 if recipe['family'] == 'top':
@@ -93,6 +98,7 @@ def run_sage(args, recipe):
     import dgl
     from main.sage.sage_model import HistorySAGE
     from main.sage.train_frequency_loss_v1 import weights_from_train_labels
+    direct = getattr(args, 'method', 'reprise') == 'direct'
     device = torch.device(args.device)
     timer = Timer(device)
     with timer:
@@ -131,8 +137,12 @@ def run_sage(args, recipe):
             from main.sage.sage_exact_head_graph_v1 import ExactHeadSAGE
             graph = candidate(dgl, graph).to(device)
             dgl.seed(123)
-            engine = ExactHeadSAGE(model, optimizer, dgl, graph, features, labels,
-                                   first_fanout=10, fanouts=(10, 10), sampler='labor')
+            if direct:
+                from main.sage.direct import Direct
+                engine = Direct(model, optimizer, dgl, graph, features, labels, fanouts=recipe['fanouts'])
+            else:
+                engine = ExactHeadSAGE(model, optimizer, dgl, graph, features, labels,
+                                       first_fanout=10, fanouts=(10, 10), sampler='labor')
             engine.sampler.set_seed(123)
             engine.loss_weights, _ = weights_from_train_labels(labels[ids['train']], int(labels.max()) + 1, recipe['loss_alpha'])
         torch.set_rng_state(rng[0])
@@ -153,7 +163,7 @@ def run_sage(args, recipe):
                 roots = order[cursor:cursor + recipe['batch_size']].to(graph.idtype)
                 cursor += len(roots)
                 engine.set_context(roots)
-                engine.update_block(min(2, recipe['updates'] - engine.actual_updates), scheduler)
+                engine.update_block(min(1 if direct else 2, recipe['updates'] - engine.actual_updates), scheduler)
                 if engine.actual_updates == recipe['updates'] and hasattr(engine, '_exact_head'):
                     engine._exact_head.close()
             if engine.actual_updates not in evaluation_steps:

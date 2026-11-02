@@ -60,6 +60,10 @@ RECIPES = {
 }
 
 
+DIRECT_CONFIGS = ('arxiv-TOP', 'products-SAGE', 'Reddit2-SAINT',
+                  'Flickr-PNA', 'Yelp-SAINT', 'PPI-GCN')
+
+
 def set_rate(optimizer, recipe, completed_updates):
     for step, rate in recipe.get('milestones', ()):
         if step == completed_updates:

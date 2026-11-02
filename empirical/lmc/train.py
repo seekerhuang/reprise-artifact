@@ -49,7 +49,7 @@ def run(args, recipe):
                 from empirical.lmc.flickr import lmc_flickr_core as core
                 from empirical.lmc.flickr.lmc_flickr_geometry import build_geometry
                 from empirical.lmc.flickr.lmc_flickr_structural import FrozenMeanP2
-                from empirical.lmc.lmc_population import off_statistics, install_statistics
+                from empirical.lmc.lmc_population import off_statistics, install_statistics, verify_statistics
                 geometry = build_geometry(author, data, ptr, device)
                 engine = FrozenMeanP2(model, optimizer)
                 loader = EvalSubgraphLoader(data, ptr, batch_size=recipe['eval_parts'], log=False)
@@ -96,6 +96,8 @@ def run(args, recipe):
                     with delivery:
                         values = off_statistics(clone, geometry, populations)
                         install_statistics(clone, values)
+                    with recording.phase('calibration_audit_seconds'):
+                        verify_statistics(values)
                     delivered = clone
                 else:
                     delivered = model

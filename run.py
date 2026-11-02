@@ -5,6 +5,18 @@ from pathlib import Path
 from main.recipes import DIRECT_CONFIGS, RECIPES
 
 
+def configure_cpu(args, parser):
+    allowed = os.sched_getaffinity(0)
+    cores = sorted(allowed)[:args.threads] if args.cpu_cores is None else args.cpu_cores
+    if args.threads < 1 or len(cores) != args.threads or len(set(cores)) != len(cores):
+        parser.error('Use one distinct CPU core per thread')
+    if not set(cores) <= allowed:
+        parser.error('--cpu-cores must be within the process CPU affinity')
+    os.sched_setaffinity(0, cores)
+    os.environ.update(OMP_NUM_THREADS=str(args.threads), MKL_NUM_THREADS=str(args.threads),
+                      OPENBLAS_NUM_THREADS='1')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True, choices=RECIPES)
@@ -14,9 +26,11 @@ def main():
     parser.add_argument('--initialization', type=int, choices=(1, 2, 3), default=1)
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--threads', type=int, default=4)
+    parser.add_argument('--cpu-cores', type=int, nargs='+')
     args = parser.parse_args()
     if args.method == 'direct' and args.config not in DIRECT_CONFIGS:
         parser.error('--method direct supports ' + ', '.join(DIRECT_CONFIGS))
+    configure_cpu(args, parser)
     if RECIPES[args.config]['family'] == 'saint':
         os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
     import torch

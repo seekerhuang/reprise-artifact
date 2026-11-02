@@ -21,6 +21,8 @@ python run.py --config arxiv-TOP --data-dir /path/to/data --initialization 1 --o
 
 `--initialization` accepts `1`, `2`, or `3`. Use a new output directory for each run.
 
+Runs use four allowed CPU cores by default; `--cpu-cores` selects specific cores.
+
 Available configurations:
 
 ```text

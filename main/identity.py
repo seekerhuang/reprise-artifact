@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 import torch
 
@@ -30,7 +31,13 @@ def describe(args, recipe, model, optimizer):
                           **{key: value(item) for key, item in group.items() if key != 'params'})
                      for group in opt.param_groups] for name, opt in optimizers.items()}
     device = torch.device(args.device)
-    environment = dict(pytorch=torch.__version__, cuda=torch.version.cuda)
+    environment = dict(pytorch=torch.__version__, cuda=torch.version.cuda,
+                       cpu_affinity=sorted(os.sched_getaffinity(0)),
+                       torch_threads=torch.get_num_threads(),
+                       torch_interop_threads=torch.get_num_interop_threads(),
+                       omp_threads=os.environ.get('OMP_NUM_THREADS'),
+                       mkl_threads=os.environ.get('MKL_NUM_THREADS'),
+                       openblas_threads=os.environ.get('OPENBLAS_NUM_THREADS'))
     if device.type == 'cuda':
         gpu = torch.cuda.get_device_properties(device)
         environment.update(gpu=gpu.name, gpu_uuid=str(gpu.uuid))

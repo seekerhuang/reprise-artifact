@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from empirical.data.datasets import adjacency, load, scipy_csr, splits
 from main.common import Output, Timer, score
-from main.recipes import set_rate
+from main.recipes import DIRECT_CONFIGS, set_rate
 from main.initialization import load_initial, restore
 from main.recording import Recording
 from main.verification import expected_clocks, expected_bn
@@ -24,7 +24,7 @@ def run_gcn(args, recipe):
     from main.models import GCN, TOPGCN
     direct = getattr(args, 'method', 'reprise') == 'direct'
     device = torch.device(args.device)
-    recording = Recording(device, memory=direct)
+    recording = Recording(device, memory=args.config in DIRECT_CONFIGS)
     timer = Timer(device, recording, 'setup_seconds')
     with timer:
         with recording.phase('data_load_and_transfer_seconds', group='setup'):
@@ -125,7 +125,7 @@ def run_sage(args, recipe):
     from main.sage.train_frequency_loss_v1 import weights_from_train_labels
     direct = getattr(args, 'method', 'reprise') == 'direct'
     device = torch.device(args.device)
-    recording = Recording(device, memory=direct)
+    recording = Recording(device, memory=args.config in DIRECT_CONFIGS)
     timer = Timer(device, recording, 'setup_seconds')
     with timer:
         with recording.phase('data_load_and_transfer_seconds', group='setup'):

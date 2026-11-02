@@ -9,6 +9,7 @@ import torch
 from main.common import Output, Timer, seed, sync
 from main.initialization import load_initial
 from main.recording import Recording
+from main.recipes import DIRECT_CONFIGS
 from empirical.saint.verification import expected_clocks
 
 
@@ -70,7 +71,7 @@ def run(args, recipe):
     from empirical.saint.delivery import yelp_low_peak_eval_identity_input_v3 as evaluation
     from empirical.saint.delivery.averaging import CausalAverage
     device = torch.device(args.device)
-    recording = Recording(device, memory=direct)
+    recording = Recording(device, memory=args.config in DIRECT_CONFIGS)
     torch.cuda.set_device(device)
     saint_model.args_global.gpu = device.index
     timer = Timer(device, recording, 'setup_seconds')
@@ -180,7 +181,7 @@ def run_reddit(args, recipe):
     from empirical.saint.delivery.averaging import CausalAverage
     from empirical.saint.delivery.evaluation import saint_evaluate
     device = torch.device(args.device)
-    recording = Recording(device, memory=direct)
+    recording = Recording(device, memory=args.config in DIRECT_CONFIGS)
     torch.cuda.set_device(device)
     saint_model.args_global.gpu = device.index
     timer = Timer(device, recording, 'setup_seconds')

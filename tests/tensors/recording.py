@@ -6,6 +6,8 @@ import tempfile
 
 import torch
 
+from main.recipes import DIRECT_CONFIGS
+
 
 def check_output(directory, method):
     directory = Path(directory)
@@ -32,13 +34,14 @@ def check_output(directory, method):
         seconds -= costs.get('prior_history_outputs_excluded_seconds', 0.0)
         seconds -= costs.get('evaluation_setup_excluded_seconds', 0.0)
         assert math.isclose(row['seconds'], seconds, rel_tol=1e-12, abs_tol=1e-12)
+    identity = json.loads((directory / 'run.json').read_text())
     memory = 'whole_process_peak_allocated_bytes'
-    assert (memory in result) == (method == 'direct')
-    if method == 'direct':
+    record_memory = identity['config'] in DIRECT_CONFIGS
+    assert (memory in result) == record_memory
+    if record_memory:
         assert result[memory] >= max(row[memory] for row in details) > 0
         assert result['whole_process_peak_allocated_GiB'] == result[memory] / 2 ** 30
         assert result['whole_process_peak_reserved_bytes'] >= result[memory]
-    identity = json.loads((directory / 'run.json').read_text())
     assert identity['method'] == method and identity['optimizer'] and identity['inputs']
     if identity['config'] == 'PPI-GCN':
         best = next(row for row in details if row['updates'] == result['best']['updates'])

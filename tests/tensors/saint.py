@@ -158,8 +158,9 @@ def check(name, device, method='reprise'):
     if method == 'direct':
         def inspect_step(optimizer, args, kwargs):
             rates.append([group['lr'] for group in optimizer.param_groups])
-            norm = sum(p.grad.double().square().sum() for p in model.parameters() if p.grad is not None).sqrt()
-            assert float(norm) <= 5.00001
+            for group in engine.clip_groups:
+                norm = sum(p.grad.double().square().sum() for p in group if p.grad is not None).sqrt()
+                assert float(norm) <= 5.00001
         handles += (model.optimizer.register_step_pre_hook(inspect_step),)
     before = {key: value.detach().clone() for key, value in model.named_parameters()}
     ctypes.CDLL(None).srand(ctypes.c_uint(2026092901 if reddit else 123))

@@ -7,7 +7,7 @@ from torch_geometric.data import Data
 from empirical.data.datasets import adjacency, load, partition
 from main.common import Output, Timer, score
 from main.initialization import load_initial, restore
-from main.recipes import set_rate
+from main.recipes import DIRECT_CONFIGS, set_rate
 from main.recording import Recording
 from main.verification import expected_clocks, expected_bn
 
@@ -68,7 +68,7 @@ def run(args, recipe):
     dataset = recipe['dataset']
     ppi = dataset == 'ppi'
     direct = getattr(args, 'method', 'reprise') == 'direct'
-    recording = Recording(device, memory=direct)
+    recording = Recording(device, memory=args.config in DIRECT_CONFIGS)
     timer = Timer(device, recording, 'setup_seconds')
     with timer:
         with recording.phase('raw_input_seconds', group='setup'):

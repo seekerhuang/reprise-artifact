@@ -37,12 +37,14 @@ def run(args, recipe):
 
     @torch.no_grad()
     def evaluate(candidate):
+        torch.backends.cuda.matmul.allow_tf32 = False
         candidate.eval()
         logits = candidate.full_forward(graph.to(device), data['x'].to(device)).cpu()
         return metrics(logits, data)
 
     for epoch in range(recipe['epochs']):
         with output.phase('training'):
+            torch.backends.cuda.matmul.allow_tf32 = True
             model.train()
             for _, roots, blocks in loader:
                 engine.step(blocks, blocks[0].srcdata['feat'], roots, blocks[-1].dstdata['label'])

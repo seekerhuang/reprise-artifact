@@ -9,7 +9,7 @@ from empirical.pna.model import PNA
 from empirical.pna.training import Training
 from main.common import Output, Timer, score
 from main.initialization import load_initial, restore
-from main.recipes import set_rate
+from main.recipes import DIRECT_CONFIGS, set_rate
 from main.recording import Recording
 from main.verification import expected_clocks, expected_bn
 
@@ -29,7 +29,7 @@ def refresh(model, loader):
 def run(args, recipe):
     direct = getattr(args, 'method', 'reprise') == 'direct'
     device = torch.device(args.device)
-    recording = Recording(device, memory=direct)
+    recording = Recording(device, memory=args.config in DIRECT_CONFIGS)
     timer = Timer(device, recording, 'setup_seconds')
     compile_native(PNA)
     with timer:

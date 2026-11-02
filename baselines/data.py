@@ -11,7 +11,7 @@ def read(args, dataset):
 
 
 def initial(args):
-    path = args.data_dir / 'baselines' / 'initial' / args.config / f'{args.initialization}.pt'
+    path = args.data_dir / 'initial' / args.config / f'{args.initialization}.pt'
     return torch.load(path, map_location='cpu', weights_only=False)
 
 

@@ -7,7 +7,6 @@ from empirical.saint.head import yelp_direct_head_query_graph_shared_warmup1 as 
 ROOT = Path(__file__).resolve().parent
 REUSED = Path(__file__).resolve().parent
 LIBRARY = REUSED / 'libmu_elementwise_sm80.so'
-LIBRARY_SHA256='60153dd66553479877d32ca0c1bdf053612bc420d1ab1065937154edf67659f9'
 REUSED_FILES=[REUSED/'mu_execution.py',REUSED/'mu_elementwise.cu',LIBRARY]
 VERSION='T456-shared-oneWarm-Head-captured-exactFP64-mu-v1'
 
@@ -71,8 +70,7 @@ class HeadQuery(shared.HeadQuery):
             dummy_FP64_mu_evaluations=self.cold_builds*self.warmups,
             capture_FP64_mu_program_recordings=self.cold_builds,
             original_native_sum_device_executions=2*(self.calls+self.cold_builds*self.warmups),
-            exact_pointwise_kernel_device_executions=2*(self.calls+self.cold_builds*self.warmups),
-            prior_eager_performance_result_not_reused=True)
+            exact_pointwise_kernel_device_executions=2*(self.calls+self.cold_builds*self.warmups))
         return result
 
     def close(self):
@@ -108,13 +106,10 @@ def adapter_view(original):
         result=dict(old_specification(rule))
         result['shared_Head_captured_exact_FP64_mu']=dict(
             version=VERSION,enabled=rule=='ordered',binary=str(LIBRARY),
-            declared_binary_sha256=LIBRARY_SHA256,
             original_two_native_ATen_reductions_and_RN_order=True,
             no_FMA_reassociation_precision_or_original_N_change=True,
             host_CABI_only_at_paid_warmup_and_capture=True,
-            all_load_cold_stage_replay_work_paid=True,
-            old_eager_negative_preserved_not_new_performance_evidence=True,
-            requires_new_combined_strict_qualification=True)
+            all_load_cold_stage_replay_work_paid=True)
         return result
     result=SimpleNamespace(**vars(original))
     result.adapt,result.specification=adapt,specification

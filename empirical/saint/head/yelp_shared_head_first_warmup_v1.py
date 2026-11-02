@@ -11,7 +11,6 @@ from empirical.saint.head import yelp_shared_head_captured_mu as original_mu
 
 VERSION = 'T456-Yelp-originalN-shared-capturedMu-first-signature-warmup-v1'
 LIBRARY = original_mu.LIBRARY
-LIBRARY_SHA256 = original_mu.LIBRARY_SHA256
 REUSED_FILES = original_mu.REUSED_FILES
 
 class HeadQuery(shared.HeadQuery):
@@ -154,8 +153,7 @@ def adapter_view(original):
             first_signature_complete_warmups=1,subsequent_signature_complete_warmups=0,
             original_N_and_native_None_two_queries_and_FP64_mu_and_clip_preserved=True,
             original_shared_pool_Body2_consumption_and_stream_waits_preserved=True,
-            all_actual_import_first_warmup_capture_staging_and_replay_work_paid=True,
-            requires_new_strict_and_whole_cold_head_GPU_diagnostic=True)
+            all_actual_import_first_warmup_capture_staging_and_replay_work_paid=True)
         return result
     result = SimpleNamespace(**vars(original))
     result.adapt, result.specification = adapt, specification

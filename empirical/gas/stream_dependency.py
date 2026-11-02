@@ -6,7 +6,7 @@ class Installation:
     def __init__(self, pool):
         import torch
         self.pool = pool
-        self.state = dict(enabled=pool is not None, pushes=0, restored=False, scope='This own raw PPI pool only; all prefix, history refresh and final-output pushes', ordering='retire old slot; retain source; push stream waits for current compute producer; original write_async', added_device_wide_synchronizations=0, old_run_actual_race_proven=False)
+        self.state = dict(enabled=pool is not None, pushes=0, restored=False, scope='This own raw PPI pool only; all prefix, history refresh and final-output pushes', ordering='retire old slot; retain source; push stream waits for current compute producer; original write_async', added_device_wide_synchronizations=0)
         if pool is None:
             return
         if 'async_push' in vars(pool):

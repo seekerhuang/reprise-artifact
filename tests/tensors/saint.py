@@ -209,3 +209,5 @@ def check(name, device, method='reprise'):
         for handle in handles:
             handle.remove()
         engine.close()
+    from saint_training import check as training_check
+    training_check(name, device, method)

@@ -177,8 +177,7 @@ def adapter_view(original):
             original_N_GEMM_and_reduction_shapes=True,
             one_shared_pool_and_one_cold_stream=True,
             input_storage_reused_only_after_complete_original_Body2_API=True,
-            actual_capture_and_dummy_zero_warmup_staging_all_paid=True,
-            requires_new_strict_numerical_and_lifetime_qualification=True)
+            actual_capture_and_dummy_zero_warmup_staging_all_paid=True)
         return result
     result=SimpleNamespace(**vars(original))
     result.adapt,result.specification=adapt,specification

@@ -223,7 +223,7 @@ def adapter_view(original):
         result['direct_Head_query_graph']=dict(version=VERSION,enabled=rule=='ordered',
             same_two_current_Head_queries_and_original_Adam=True,
             same_FP64_measurement_expression_and_native_Head_clip=True,
-            padded_FP32_shapes_changed=True,requires_finite_GPU_qualification=True)
+            padded_FP32_shapes_changed=True)
         return result
     view=SimpleNamespace(**vars(original))
     view.adapt,view.specification=adapt,specification

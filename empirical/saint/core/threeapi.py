@@ -60,5 +60,5 @@ def adapt(parent):
                 self.active_cache = False
 
         def work(self):
-            return dict(super().work(), native_Adam_call_grouping='head1; head2+body1; body2', core_query_and_per_parameter_update_sequence_unchanged=True, execution_mechanism_origin='R19 three-API scheduling; SAINT adaptation')
+            return dict(super().work(), native_Adam_call_grouping='head1; head2+body1; body2', core_query_and_per_parameter_update_sequence_unchanged=True)
     return ThreeAPI

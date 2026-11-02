@@ -1,5 +1,4 @@
 from pathlib import Path
-import hashlib
 import importlib.util
 import time
 
@@ -7,7 +6,6 @@ HERE=Path(__file__).resolve().parent
 ROOT = HERE
 BACKEND = HERE / 'yelp_train_strict_bmm.py'
 METADATA = HERE.parent / 'input/saint_canonical_coo_metadata_v1.py'
-EXPECTED_METADATA_SHA256='aa3ebca08cd03d69c4c59338da20ba3b1bb88dfc1e31ab7858e86c2ef78b69c2'
 VERSION='Yelp-canonical-positive-CPU-metadata-original-public-bmm-v1'
 
 def load(path,name):
@@ -21,7 +19,7 @@ _qualification=None
 
 def specification():
     return dict(original.specification(),canonical_CPU_metadata=dict(version=VERSION,
-        helper=str(METADATA),helper_sha256=EXPECTED_METADATA_SHA256,
+        helper=str(METADATA),
         actual_public_bmm_unchanged=True,custom_singleton_DSO_loaded=False,
         only_fresh_original_producer_sorted_unique_positive_normal_FP32=True,
         all_other_inputs_use_original_converter=True,metadata_installed_after_ContextIndex=True,

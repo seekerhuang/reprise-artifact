@@ -8,6 +8,8 @@ import torch
 
 from main.common import Output, Timer, seed, sync
 from main.initialization import load_initial
+from main.recording import Recording
+from empirical.saint.verification import expected_clocks
 
 
 def engine_class():
@@ -68,76 +70,99 @@ def run(args, recipe):
     from empirical.saint.delivery import yelp_low_peak_eval_identity_input_v3 as evaluation
     from empirical.saint.delivery.averaging import CausalAverage
     device = torch.device(args.device)
+    recording = Recording(device, memory=direct)
     torch.cuda.set_device(device)
     saint_model.args_global.gpu = device.index
-    timer = Timer(device)
+    timer = Timer(device, recording, 'setup_seconds')
     with timer:
         seed(123)
         ctypes.CDLL(None).srand(ctypes.c_uint(123))
-        full, training, features, labels, roles = load_yelp(args.data_dir)
-        full, training = full.astype(np.int32), training.astype(np.int32)
-        normalized = adj_norm(full)
-        parameters = dict(lr=0.01, weight_decay=0.0, dropout=0.1, sample_coverage=50)
-        architecture = dict(dim=512, aggr='concat', loss='sigmoid', arch='1-1-0', act='relu', bias='norm')
-        minibatch = Minibatch(normalized, training, roles, parameters)
-        model = GraphSAINT(100, architecture, parameters, features, labels).to(device)
-        unused_minibatch = Minibatch(normalized, training, roles, parameters, cpu_eval=True)
-        unused_model = GraphSAINT(100, architecture, parameters, features, labels, cpu_eval=True)
-        load_initial(model, args)
-        saint_native_fused_adam_v1.install(model)
-        for group in model.optimizer.param_groups:
-            group.update(lr=recipe['lr'], weight_decay=0.0)
-        model.optimizer.defaults.update(lr=recipe['lr'], weight_decay=0.0)
-        model.dropout, model.lr = recipe['dropout'], recipe['lr']
-        for layer in [*model.aggregators, model.classifier]:
-            layer.f_dropout.p = recipe['dropout']
-        terminal_beta07.BASE_OPTIONS = dict(terminal_beta07.BASE_OPTIONS, fused=True, foreach=False)
-        terminal_beta07.install(model)
-        if direct:
-            from empirical.saint.core.direct import Direct
-            engine = Direct(model)
-        else:
-            engine = engine_class()(model, 'lateA')
-        average = CausalAverage(model)
-        ctypes.CDLL(None).srand(ctypes.c_uint(123))
-        minibatch.set_sampler(dict(sampler='rw', num_root=1250, depth=2, end=75))
-        if not direct and len(minibatch.subgraphs_remaining_nodes) < recipe['updates'] // 2:
-            raise RuntimeError('The native warm pool does not cover the training budget')
-        seed(2026092901)
-        ctypes.CDLL(None).srand(ctypes.c_uint(2026092901))
-        del unused_model, unused_minibatch
-    output = Output(args.out)
+        with recording.phase('data_load_and_normalization_seconds', group='setup'):
+            full, training, features, labels, roles = load_yelp(args.data_dir)
+            full, training = full.astype(np.int32), training.astype(np.int32)
+            normalized = adj_norm(full)
+        with recording.phase('model_and_minibatch_construction_seconds', group='setup'):
+            parameters = dict(lr=0.01, weight_decay=0.0, dropout=0.1, sample_coverage=50)
+            architecture = dict(dim=512, aggr='concat', loss='sigmoid', arch='1-1-0', act='relu', bias='norm')
+            minibatch = Minibatch(normalized, training, roles, parameters)
+            model = GraphSAINT(100, architecture, parameters, features, labels).to(device)
+            unused_minibatch = Minibatch(normalized, training, roles, parameters, cpu_eval=True)
+            unused_model = GraphSAINT(100, architecture, parameters, features, labels, cpu_eval=True)
+        with recording.phase('initial_optimizer_and_engine_seconds', group='setup'):
+            load_initial(model, args)
+            saint_native_fused_adam_v1.install(model)
+            for group in model.optimizer.param_groups:
+                group.update(lr=recipe['lr'], weight_decay=0.0)
+            model.optimizer.defaults.update(lr=recipe['lr'], weight_decay=0.0)
+            model.dropout, model.lr = recipe['dropout'], recipe['lr']
+            for layer in [*model.aggregators, model.classifier]:
+                layer.f_dropout.p = recipe['dropout']
+            terminal_beta07.BASE_OPTIONS = dict(terminal_beta07.BASE_OPTIONS, fused=True, foreach=False)
+            terminal_beta07.install(model)
+            if direct:
+                from empirical.saint.core.direct import Direct
+                engine = Direct(model)
+            else:
+                engine = engine_class()(model, 'lateA')
+            average = CausalAverage(model)
+        with recording.phase('normalizer_and_warm_pool_seconds', group='setup'):
+            ctypes.CDLL(None).srand(ctypes.c_uint(123))
+            minibatch.set_sampler(dict(sampler='rw', num_root=1250, depth=2, end=75))
+            if not direct and len(minibatch.subgraphs_remaining_nodes) < recipe['updates'] // 2:
+                raise RuntimeError('The native warm pool does not cover the training budget')
+        with recording.phase('training_rng_restore_seconds', group='setup'):
+            seed(2026092901)
+            ctypes.CDLL(None).srand(ctypes.c_uint(2026092901))
+            del unused_model, unused_minibatch
+
+    def evaluate(current):
+        metrics = evaluation.evaluate(saint_evaluate, current, minibatch, thresholds=(0.5, 0.45))
+        return metrics['valid_score'], metrics['test_score_045']
+
+    timer.name = 'training_outer_seconds'
+    recording.identify(args, recipe, model, model.optimizer)
+    output = Output(args.out, recording)
     try:
-        for _ in range(recipe['epochs']):
-            with timer:
-                minibatch.shuffle()
-                if not direct:
-                    backend.metadata.install(minibatch)
-                try:
-                    if direct:
-                        from empirical.saint.sparse.yelp_train_strict_bmm import ROUTE as route
-                    else:
-                        route = backend.ROUTE
-                    with route.strict_determinism(torch), route.install(model):
-                        while not minibatch.end():
-                            if not minibatch.subgraphs_remaining_nodes:
-                                if direct:
-                                    minibatch.par_graph_sample('train')
-                                else:
-                                    raise RuntimeError('The native warm pool is exhausted')
-                            nodes, matrix, weights = minibatch.one_batch('train')
-                            engine.block(nodes, matrix, weights)
-                            if not direct:
-                                minibatch.batch_num += 1
-                finally:
+        try:
+            for _ in range(recipe['epochs']):
+                with timer:
+                    minibatch.shuffle()
                     if not direct:
-                        backend.metadata.close(minibatch)
-            with average.installed(engine.visits, lambda: sync(device)):
-                metrics = evaluation.evaluate(saint_evaluate, model, minibatch, thresholds=(0.5, 0.45))
-                output.observe(model, engine.visits, timer.seconds + average.required_seconds,
-                               metrics['valid_score'], metrics['test_score_045'])
+                        backend.metadata.install(minibatch)
+                    try:
+                        if direct:
+                            from empirical.saint.sparse.yelp_train_strict_bmm import ROUTE as route
+                        else:
+                            route = backend.ROUTE
+                        with route.strict_determinism(torch), route.install(model):
+                            while not minibatch.end():
+                                if not minibatch.subgraphs_remaining_nodes:
+                                    if direct:
+                                        minibatch.par_graph_sample('train')
+                                    else:
+                                        raise RuntimeError('The native warm pool is exhausted')
+                                nodes, matrix, weights = minibatch.one_batch('train')
+                                engine.block(nodes, matrix, weights)
+                                if not direct:
+                                    minibatch.batch_num += 1
+                    finally:
+                        if not direct:
+                            backend.metadata.close(minibatch)
+                with average.installed(engine.visits, lambda: sync(device)):
+                    with recording.phase('evaluation_seconds'):
+                        valid, test = evaluate(model)
+                    recording.costs['averaging_seconds'] = average.required_seconds
+                    recording.costs['averaging_restoration_seconds'] = average.restoration_seconds_SCI
+                    output.observe(model, engine.visits, timer.seconds + average.required_seconds, valid, test)
+        finally:
+            with recording.phase('training_close_seconds'):
+                engine.close()
+        recording.costs['averaging_restoration_seconds'] = average.restoration_seconds_SCI
+        recording.costs['inactive_averaging_observation_seconds'] = average.inactive_observation_seconds_SCI
+        clocks = expected_clocks(model, engine, recipe['updates'], direct)
+        output.finish(model, engine.visits, evaluate, expected_updates=recipe['updates'],
+                      optimizer=model.optimizer, clocks=clocks, bn_clocks={}, tolerances=(1e-5, 1e-5))
     finally:
-        engine.close()
         output.close()
 
 
@@ -155,74 +180,97 @@ def run_reddit(args, recipe):
     from empirical.saint.delivery.averaging import CausalAverage
     from empirical.saint.delivery.evaluation import saint_evaluate
     device = torch.device(args.device)
+    recording = Recording(device, memory=direct)
     torch.cuda.set_device(device)
     saint_model.args_global.gpu = device.index
-    timer = Timer(device)
+    timer = Timer(device, recording, 'setup_seconds')
     with timer:
         seed(recipe['sampler_seed'])
         ctypes.CDLL(None).srand(ctypes.c_uint(recipe['sampler_seed']))
-        (full, training, features, labels, roles), _ = native_import.load(load_reddit, args.data_dir)
-        full, training = full.astype(np.int32), training.astype(np.int32)
-        normalized, _ = reddit_unit_csr_norm.apply(adj_norm, full)
-        parameters = dict(lr=0.01, weight_decay=0.0, dropout=0.1,
-                          sample_coverage=recipe['sample_coverage'], dataset='reddit')
-        architecture = dict(dim=recipe['hidden'], aggr='concat', loss=recipe['loss'],
-                            arch=recipe['architecture'], act='relu', bias='norm')
-        minibatch = Minibatch(normalized, training, roles, parameters)
-        model = GraphSAINT(41, architecture, parameters, features, labels).to(device)
-        load_initial(model, args)
-        saint_native_fused_adam_v1.install(model)
-        for group in model.optimizer.param_groups:
-            group.update(lr=recipe['lr'], eps=recipe['eps'], weight_decay=0.0)
-        model.optimizer.defaults.update(lr=recipe['lr'], eps=recipe['eps'], weight_decay=0.0)
-        model.dropout, model.lr = recipe['dropout'], recipe['lr']
-        for layer in [*model.aggregators, model.classifier]:
-            layer.f_dropout.p = recipe['dropout']
-        model.optimizer._phase2_declared_rate = dict(initial_lr=recipe['lr'], transitions=[], current_lr=recipe['lr'])
-        reddit_terminal_groups.install(model, model.optimizer)
-        if direct:
-            from empirical.saint.core.direct import Direct
-            engine = Direct(model)
-        else:
-            engine = reddit_engine_class()(model, 'lateA')
-        average = CausalAverage(model, after_updates=recipe['average_start'],
-                                cadence=recipe['eval_every'], window=recipe['average_window'])
-        ctypes.CDLL(None).srand(ctypes.c_uint(recipe['sampler_seed']))
-        minibatch.set_sampler(dict(sampler='rw', num_root=recipe['root_count'], depth=recipe['walk_depth']))
-        if not direct and len(minibatch.subgraphs_remaining_nodes) < recipe['updates'] // 2:
-            raise RuntimeError('The native warm pool does not cover the training budget')
-        seed(recipe['training_seed'])
-        ctypes.CDLL(None).srand(ctypes.c_uint(recipe['training_seed']))
-    output = Output(args.out)
+        with recording.phase('data_load_and_normalization_seconds', group='setup'):
+            (full, training, features, labels, roles), _ = native_import.load(load_reddit, args.data_dir)
+            full, training = full.astype(np.int32), training.astype(np.int32)
+            normalized, _ = reddit_unit_csr_norm.apply(adj_norm, full)
+        with recording.phase('model_and_minibatch_construction_seconds', group='setup'):
+            parameters = dict(lr=0.01, weight_decay=0.0, dropout=0.1,
+                              sample_coverage=recipe['sample_coverage'], dataset='reddit')
+            architecture = dict(dim=recipe['hidden'], aggr='concat', loss=recipe['loss'],
+                                arch=recipe['architecture'], act='relu', bias='norm')
+            minibatch = Minibatch(normalized, training, roles, parameters)
+            model = GraphSAINT(41, architecture, parameters, features, labels).to(device)
+        with recording.phase('initial_optimizer_and_engine_seconds', group='setup'):
+            load_initial(model, args)
+            saint_native_fused_adam_v1.install(model)
+            for group in model.optimizer.param_groups:
+                group.update(lr=recipe['lr'], eps=recipe['eps'], weight_decay=0.0)
+            model.optimizer.defaults.update(lr=recipe['lr'], eps=recipe['eps'], weight_decay=0.0)
+            model.dropout, model.lr = recipe['dropout'], recipe['lr']
+            for layer in [*model.aggregators, model.classifier]:
+                layer.f_dropout.p = recipe['dropout']
+            model.optimizer._phase2_declared_rate = dict(initial_lr=recipe['lr'], transitions=[], current_lr=recipe['lr'])
+            reddit_terminal_groups.install(model, model.optimizer)
+            if direct:
+                from empirical.saint.core.direct import Direct
+                engine = Direct(model)
+            else:
+                engine = reddit_engine_class()(model, 'lateA')
+            average = CausalAverage(model, after_updates=recipe['average_start'],
+                                    cadence=recipe['eval_every'], window=recipe['average_window'])
+        with recording.phase('normalizer_and_warm_pool_seconds', group='setup'):
+            ctypes.CDLL(None).srand(ctypes.c_uint(recipe['sampler_seed']))
+            minibatch.set_sampler(dict(sampler='rw', num_root=recipe['root_count'], depth=recipe['walk_depth']))
+            if not direct and len(minibatch.subgraphs_remaining_nodes) < recipe['updates'] // 2:
+                raise RuntimeError('The native warm pool does not cover the training budget')
+        with recording.phase('training_rng_restore_seconds', group='setup'):
+            seed(recipe['training_seed'])
+            ctypes.CDLL(None).srand(ctypes.c_uint(recipe['training_seed']))
+
+    def evaluate(current):
+        metrics = saint_evaluate(current, minibatch)
+        return metrics['valid_score'], metrics['test_score']
+
+    timer.name = 'training_outer_seconds'
+    recording.identify(args, recipe, model, model.optimizer)
+    output = Output(args.out, recording)
     try:
-        for _ in range(recipe['epochs']):
-            with timer:
-                with backend.strict_determinism(torch), backend.install(model):
-                    for step, rate in recipe['milestones']:
-                        if engine.visits == step:
-                            before = [group['lr'] for group in model.optimizer.param_groups]
-                            for group in model.optimizer.param_groups:
-                                group['lr'] = rate
-                            model.optimizer.defaults['lr'] = model.lr = rate
-                            phase = model.optimizer._phase2_declared_rate
-                            phase['current_lr'] = rate
-                            phase['transitions'].append(dict(after_completed_updates=step, before_group_lrs=before,
-                                                             after_group_lrs=[rate] * len(before)))
-                    minibatch.shuffle()
-                    while not minibatch.end():
-                        if not minibatch.subgraphs_remaining_nodes:
-                            if direct:
-                                minibatch.par_graph_sample('train')
-                            else:
-                                raise RuntimeError('The native warm pool is exhausted')
-                        nodes, matrix, weights = minibatch.one_batch('train')
-                        engine.block(nodes, matrix, weights)
-                        if not direct:
-                            minibatch.batch_num += 1
-            with average.installed(engine.visits, lambda: sync(device)):
-                metrics = saint_evaluate(model, minibatch)
-                output.observe(model, engine.visits, timer.seconds + average.required_seconds,
-                               metrics['valid_score'], metrics['test_score'])
+        try:
+            for _ in range(recipe['epochs']):
+                with timer:
+                    with backend.strict_determinism(torch), backend.install(model):
+                        for step, rate in recipe['milestones']:
+                            if engine.visits == step:
+                                before = [group['lr'] for group in model.optimizer.param_groups]
+                                for group in model.optimizer.param_groups:
+                                    group['lr'] = rate
+                                model.optimizer.defaults['lr'] = model.lr = rate
+                                phase = model.optimizer._phase2_declared_rate
+                                phase['current_lr'] = rate
+                                phase['transitions'].append(dict(after_completed_updates=step, before_group_lrs=before,
+                                                                 after_group_lrs=[rate] * len(before)))
+                        minibatch.shuffle()
+                        while not minibatch.end():
+                            if not minibatch.subgraphs_remaining_nodes:
+                                if direct:
+                                    minibatch.par_graph_sample('train')
+                                else:
+                                    raise RuntimeError('The native warm pool is exhausted')
+                            nodes, matrix, weights = minibatch.one_batch('train')
+                            engine.block(nodes, matrix, weights)
+                            if not direct:
+                                minibatch.batch_num += 1
+                with average.installed(engine.visits, lambda: sync(device)):
+                    with recording.phase('evaluation_seconds'):
+                        valid, test = evaluate(model)
+                    recording.costs['averaging_seconds'] = average.required_seconds
+                    recording.costs['averaging_restoration_seconds'] = average.restoration_seconds_SCI
+                    output.observe(model, engine.visits, timer.seconds + average.required_seconds, valid, test)
+        finally:
+            with recording.phase('training_close_seconds'):
+                engine.close()
+        recording.costs['averaging_restoration_seconds'] = average.restoration_seconds_SCI
+        recording.costs['inactive_averaging_observation_seconds'] = average.inactive_observation_seconds_SCI
+        clocks = expected_clocks(model, engine, recipe['updates'], direct)
+        output.finish(model, engine.visits, evaluate, expected_updates=recipe['updates'],
+                      optimizer=model.optimizer, clocks=clocks, bn_clocks={}, tolerances=(1e-5, 1e-5))
     finally:
-        engine.close()
         output.close()

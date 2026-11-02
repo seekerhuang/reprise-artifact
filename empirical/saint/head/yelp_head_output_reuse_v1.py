@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import inspect
 from pathlib import Path
 import sys
@@ -16,7 +15,6 @@ from empirical.saint.head import yelp_shared_head_first_warmup_v1 as original
 
 VERSION = "SAINT-Yelp-originalN-nativeNone-graph-owned-output-reuse-v1"
 LIBRARY = original.LIBRARY
-LIBRARY_SHA256 = original.LIBRARY_SHA256
 REUSED_FILES = original.REUSED_FILES
 
 class _GraphOwnedArray:
@@ -64,7 +62,6 @@ if _source.count(_anchor) != 1:
 _source = _source.replace(_anchor, _anchor + "\n        self._borrow_outputs(owned)\n        output = None")
 _namespace = dict(original.HeadQuery._new.__globals__)
 exec(compile(_source, __file__ + "::original_capture_with_released_outputs", "exec"), _namespace)
-DERIVED_CAPTURE_SOURCE_SHA256 = hashlib.sha256(_source.encode()).hexdigest()
 
 class HeadQuery(original.HeadQuery):
     _new = _namespace["_new"]
@@ -134,7 +131,6 @@ class HeadQuery(original.HeadQuery):
             lambda_address_union_bytes=sum(end-start for start,end in union),
             lambda_output_ranges=ranges,
             allocated_is_not_reserved_memory=True,
-            derived_capture_source_sha256=DERIVED_CAPTURE_SOURCE_SHA256,
         )
         return result
 
@@ -169,7 +165,6 @@ def adapter_view(parent):
             no_new_GPU_copy_or_preallocated_gradient=True,
             original_two_current_queries_and_complete_Body2_consumption=True,
             all_cold_alias_construction_staging_capture_and_replay_paid=True,
-            requires_strict_numerical_version_and_pointer_lifetime_GPU_qualification=True,
         )
         return result
     view = SimpleNamespace(**vars(parent))

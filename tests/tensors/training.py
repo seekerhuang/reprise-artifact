@@ -47,7 +47,7 @@ def prepare(name, recipe, directory):
 
 def check(name, device, method='reprise'):
     recipe = dict(RECIPES[name])
-    recipe.update(updates=4, eval_every=2, epochs=5 if name == 'Yelp-GCN' else 1)
+    recipe.update(updates=4, eval_every=2, epochs=5 if name == 'Yelp-GCN' else 2 if name == 'PPI-GCN' else 1)
     if recipe['family'] == 'sage':
         recipe['batch_size'] = 615 if name == 'products-SAGE' else 32
     with tempfile.TemporaryDirectory(prefix='reprise-tensors-') as temporary:
@@ -64,9 +64,11 @@ def check(name, device, method='reprise'):
         else:
             from empirical.gas.train import run
         run(args, recipe)
+        from recording import check_output
+        check_output(args.out, method)
         checkpoint = torch.load(args.out / 'best.pt', map_location='cpu', weights_only=False)
         if method == 'direct':
-            expected = 2 * recipe['max_steps'] if recipe['family'] in ('ppi', 'pna') else recipe['updates']
+            expected = 2 * recipe['max_steps'] * recipe['epochs'] if recipe['family'] in ('ppi', 'pna') else recipe['updates']
             with (args.out / 'trajectory.csv').open() as stream:
                 assert int(list(csv.DictReader(stream))[-1]['updates']) == expected
         actual = checkpoint['model']

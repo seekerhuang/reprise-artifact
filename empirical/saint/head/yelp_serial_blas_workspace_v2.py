@@ -1,6 +1,5 @@
 from pathlib import Path
 import ctypes
-import hashlib
 import os
 import sys
 import threading
@@ -98,7 +97,6 @@ if _inverse != _source:
     raise RuntimeError('Only cold stream storage/owner bindings are permitted')
 _namespace = dict(previous.previous._namespace)
 exec(compile(_derived, __file__ + '::same_Head_capture_shared_workspace', 'exec'), _namespace)
-DERIVED_CAPTURE_SHA256 = hashlib.sha256(_derived.encode()).hexdigest()
 
 class HeadQuery(WorkspaceMixin, previous.HeadQuery):
     _new = _namespace['_new']
@@ -131,8 +129,7 @@ def adapter_view(parent):
             original_outputReuse_v2_native_math_and_owner_rules=True,
             original_workspace_capacity_and_native_BLAS_calls=True,
             main_and_capture_stream_waits_unchanged=True,
-            new_binding_and_library_load_inside_original_paid_TRAIN=True,
-            requires_new_GPU_ownership_numeric_and_full_budget_validation=True)
+            new_binding_and_library_load_inside_original_paid_TRAIN=True)
         return result
     value = SimpleNamespace(**vars(parent))
     value.adapt, value.specification = adapt, specification

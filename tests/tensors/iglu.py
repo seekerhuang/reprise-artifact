@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+from pathlib import Path
+import tempfile
 
 import numpy as np
 import scipy.sparse as sp
@@ -42,3 +44,35 @@ def check(name, device):
     with torch.no_grad():
         logits = model(geometry.first, propagation, transpose)
     assert logits.shape == (80, 40) and torch.isfinite(logits).all()
+    from main.common import Output, Timer
+    from main.recording import Recording
+    from main.recipes import RECIPES
+    from main.verification import expected_clocks
+    from recording import check_output
+    recording = Recording(device)
+    with tempfile.TemporaryDirectory(prefix='reprise-iglu-recording-') as temporary:
+        args = SimpleNamespace(config=name, method='reprise', data_dir=Path(temporary), initialization=1, device=device)
+        setup = Timer(device, recording, 'setup_seconds')
+        with setup:
+            recording.identify(args, RECIPES[name], model, engine.optimizers)
+        output = Output(Path(temporary) / 'output', recording)
+
+        def evaluate(current):
+            value = float(current(geometry.first, propagation, transpose).sum())
+            return value, value
+
+        try:
+            training = Timer(device, recording, 'training_outer_seconds')
+            with training:
+                model.train()
+                engine.update_block(0, .001)
+            model.eval()
+            with torch.no_grad():
+                valid, test = evaluate(model)
+            output.observe(model, engine.actual_updates, setup.seconds + training.seconds, valid, test)
+            engine.clocks()
+            output.finish(model, engine.actual_updates, evaluate, expected_updates=6,
+                          optimizer=engine.optimizers, clocks=expected_clocks(model, 6), bn_clocks={})
+        finally:
+            output.close()
+        check_output(output.directory, 'reprise')

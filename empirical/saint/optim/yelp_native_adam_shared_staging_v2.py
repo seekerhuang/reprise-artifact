@@ -1,5 +1,4 @@
 from pathlib import Path
-import hashlib
 import inspect
 import sys
 import textwrap
@@ -29,7 +28,6 @@ if _inverse != _source:
 _namespace = dict(previous._prototype.NativeAdamGraphs._new.__globals__)
 exec(compile(_derived, __file__ + '::shared_native_capture', 'exec'), _namespace)
 _capture = _namespace['_new']
-DERIVED_CAPTURE_SHA256 = hashlib.sha256(_derived.encode()).hexdigest()
 
 class NativeAdamGraphs(previous.NativeAdamGraphs):
     def __init__(self, *args, **kwargs):
@@ -63,8 +61,7 @@ class NativeAdamGraphs(previous.NativeAdamGraphs):
             static_gradient_payload_bytes=sum(t.numel() * t.element_size()
                 for t in self._shared_gradient_staging.values()),
             original_complete_copy_before_every_replay=True,
-            original_single_stream_guard_unchanged=True,
-            native_capture_source_sha256=DERIVED_CAPTURE_SHA256)
+            original_single_stream_guard_unchanged=True)
         return result
 
 def install_native_adam(optimizer, *, head_parameters, body_parameters, inactive_parameters=()):

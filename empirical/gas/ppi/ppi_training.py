@@ -4,7 +4,7 @@ RADIAL_METRIC = 'euclidean'
 def make_train(edge_dropout_fn, mode, period):
     import torch
     if mode != 'prefix' or period != 2:
-        raise ValueError('R59 preserves Head2/mean VJP1/Body2; only final BN structural gradient completion is new')
+        raise ValueError('Requires prefix mode and two updates per block')
 
     def train(model, loader, criterion, optimizer, max_steps, grad_norm=None, edge_dropout=0.0):
         if grad_norm is not None or edge_dropout != 0.0 or model.dropout != 0.0:

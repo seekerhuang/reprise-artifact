@@ -10,6 +10,8 @@ from empirical.pna.training import Training
 from main.common import Output, Timer, score
 from main.initialization import load_initial, restore
 from main.recipes import set_rate
+from main.recording import Recording
+from main.verification import expected_clocks, expected_bn
 
 
 def architecture(recipe):
@@ -27,17 +29,20 @@ def refresh(model, loader):
 def run(args, recipe):
     direct = getattr(args, 'method', 'reprise') == 'direct'
     device = torch.device(args.device)
-    timer = Timer(device)
+    recording = Recording(device, memory=direct)
+    timer = Timer(device, recording, 'setup_seconds')
     compile_native(PNA)
     with timer:
-        raw = load('flickr', args.data_dir)
-        data = _data(raw)
-        saved = torch.load(args.data_dir / 'flickr-partition.pt', weights_only=True)
-        data = permute(data, saved['permutation'], log=False)
-        train = SubgraphLoader(data, saved['ptr'], batch_size=recipe['batch_parts'],
-                               shuffle=True, num_workers=0)
-        evaluation = EvalSubgraphLoader(data, saved['ptr'], batch_size=recipe['batch_parts'], log=False)
-        buffer_size = max(sub.n_id.numel() for sub in evaluation)
+        with recording.phase('data_and_partition_seconds', group='setup'):
+            raw = load('flickr', args.data_dir)
+            data = _data(raw)
+            saved = torch.load(args.data_dir / 'flickr-partition.pt', weights_only=True)
+            data = permute(data, saved['permutation'], log=False)
+        with recording.phase('loader_construction_seconds', group='setup'):
+            train = SubgraphLoader(data, saved['ptr'], batch_size=recipe['batch_parts'],
+                                   shuffle=True, num_workers=0)
+            evaluation = EvalSubgraphLoader(data, saved['ptr'], batch_size=recipe['batch_parts'], log=False)
+            buffer_size = max(sub.n_id.numel() for sub in evaluation)
         options = architecture(recipe)
 
         def factory():
@@ -45,27 +50,43 @@ def run(args, recipe):
                        deg=data.adj_t.storage.rowcount(), pool_size=2,
                        buffer_size=buffer_size, gamma=recipe['gamma'], **options).to(device)
 
-        model = factory()
-        optimizer = torch.optim.Adam([
-            dict(params=model.reg_modules.parameters(), weight_decay=0.0),
-            dict(params=model.nonreg_modules.parameters(), weight_decay=0.0),
-        ], lr=0.005)
-        if direct:
-            from empirical.pna.direct import Direct
-            engine = Direct(model, optimizer)
-        else:
-            engine = Training(model, optimizer, 'A')
-        rng = load_initial(model, args)
-        for group in optimizer.param_groups:
-            group['lr'] = recipe['lr']
-        optimizer.defaults['lr'] = recipe['lr']
-        for bn in model.bns:
-            bn.momentum = recipe['bn_momentum']
-        average = Window(model)
-        delivery = Delivery(factory, data, evaluation, device)
-        restore(rng, device)
-        refresh(model, evaluation)
-    output = Output(args.out)
+        with recording.phase('model_constructor_seconds', group='setup'):
+            model = factory()
+        with recording.phase('optimizer_constructor_seconds', group='setup'):
+            optimizer = torch.optim.Adam([
+                dict(params=model.reg_modules.parameters(), weight_decay=0.0),
+                dict(params=model.nonreg_modules.parameters(), weight_decay=0.0),
+            ], lr=0.005)
+        with recording.phase('engine_initial_and_delivery_setup_seconds', group='setup'):
+            if direct:
+                from empirical.pna.direct import Direct
+                engine = Direct(model, optimizer)
+            else:
+                engine = Training(model, optimizer, 'A')
+            rng = load_initial(model, args)
+            for group in optimizer.param_groups:
+                group['lr'] = recipe['lr']
+            optimizer.defaults['lr'] = recipe['lr']
+            for bn in model.bns:
+                bn.momentum = recipe['bn_momentum']
+            average = Window(model)
+            delivery = Delivery(factory, data, evaluation, device, recording)
+            from empirical.gas.clock import Clock
+            clock = Clock(model)
+            recording.close_callbacks.append(clock.close)
+        with recording.phase('initial_rng_restore_seconds', group='setup'):
+            restore(rng, device)
+        with recording.phase('initial_history_fill_seconds', group='setup'):
+            refresh(model, evaluation)
+    timer.name = 'training_outer_seconds'
+    recording.identify(args, recipe, model, optimizer)
+    output = Output(args.out, recording)
+
+    def evaluate_metrics(candidate):
+        logits = refresh(candidate, evaluation)
+        return (score(logits[data.val_mask], data.y[data.val_mask]),
+                score(logits[data.test_mask], data.y[data.test_mask]))
+
     criterion = torch.nn.CrossEntropyLoss()
     try:
         for _ in range(recipe['epochs']):
@@ -85,13 +106,27 @@ def run(args, recipe):
                 if direct:
                     optimizer.zero_grad(set_to_none=True)
                 average.capture(model, engine.visits)
-                current_refresh = Timer(device)
+                current_refresh = Timer(device, recording, 'history_refresh_seconds')
                 with current_refresh:
                     refresh(model, evaluation)
-            logits, preparation_seconds = delivery.observe(model, average)
+            with recording.phase('delivery_observer_seconds'):
+                logits, preparation_seconds = delivery.observe(model, average)
+                valid = score(logits[data.val_mask], data.y[data.val_mask])
+                test = score(logits[data.test_mask], data.y[data.test_mask])
+            recording.costs['pure_history_output_seconds'] = clock.output_seconds
+            recording.costs['shared_pool_setup_seconds'] = clock.shared_setup_seconds
+            recording.costs['current_evaluation_refresh_excluded_seconds'] = current_refresh.seconds
+            recording.costs['prior_history_outputs_excluded_seconds'] = clock.prior_output(True)
+            recording.costs['single_delivery_preparation_seconds'] = preparation_seconds
             output.observe(delivery.model, engine.visits,
-                           timer.seconds - current_refresh.seconds + preparation_seconds,
-                           score(logits[data.val_mask], data.y[data.val_mask]),
-                           score(logits[data.test_mask], data.y[data.test_mask]))
+                           timer.seconds - current_refresh.seconds + preparation_seconds - clock.prior_output(True), valid, test)
+        expected = 2 * recipe['max_steps'] * recipe['epochs']
+        if not direct:
+            engine.verify(expected)
+        output.finish(model, engine.visits, evaluate_metrics, expected_updates=expected, optimizer=optimizer,
+                      clocks=expected_clocks(model, expected),
+                      bn_clocks=expected_bn(model, expected // (1 if direct else 2)),
+                      tolerances=(1 / int(data.val_mask.sum()), 1 / int(data.test_mask.sum())),
+                      counts=(int(data.val_mask.sum()), int(data.test_mask.sum())))
     finally:
         output.close()

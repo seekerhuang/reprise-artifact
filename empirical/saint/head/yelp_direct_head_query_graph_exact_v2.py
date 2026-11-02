@@ -85,8 +85,7 @@ def adapter_view(original):
             native_None_gradient_acquisition=True,
             original_two_current_Head_queries_and_native_Adam=True,
             original_FP32_GEMM_FP64_measurement_native_Head_clip=True,
-            no_padding_or_RNG_draws=True,all_cold_work_paid_in_TRAIN=True,
-            requires_new_strict_byte_qualification=True)
+            no_padding_or_RNG_draws=True,all_cold_work_paid_in_TRAIN=True)
         return result
     result=SimpleNamespace(**vars(original))
     result.adapt,result.specification=adapt,specification

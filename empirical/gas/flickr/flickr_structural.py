@@ -75,7 +75,7 @@ class FlickrTraining(BaseTraining):
             (cut, captured) = self._forward_capture(x, adj, core, args)
             query = cut.detach()
             if query.requires_grad:
-                raise RuntimeError('Old wide input-gradient path must stay disabled')
+                raise RuntimeError('Wide input-gradient path must stay disabled')
             pending_head2 = None
             for head_slot in range(2):
                 logits = self.tail(query)

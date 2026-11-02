@@ -17,4 +17,4 @@ def initial_hidden_only(model, loader):
         model.pool.synchronize_push()
         if covered != model.num_nodes or len(batches) != 8:
             raise RuntimeError('Initial hidden fill must cover every node exactly once')
-    return dict(first_layer_calls=len(batches), last_layer_calls=0, hidden_nodes=covered, subsequent_refresh_policy='All original500 complete layerwise mini_test calls unchanged', scope='Original same-order layer0 and history push/drain. Initial unused _out absent; pull streams/buffers/output allocation may be deferred to later required work. No assumed net saving from the whole old initial-fill bucket.')
+    return dict(first_layer_calls=len(batches), last_layer_calls=0, hidden_nodes=covered, subsequent_refresh_policy='All original500 complete layerwise mini_test calls unchanged', scope='Original same-order layer0 and history push/drain. Initial unused _out absent; pull streams/buffers/output allocation may be deferred to later required work.')

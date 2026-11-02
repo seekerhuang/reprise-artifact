@@ -1,9 +1,8 @@
 from pathlib import Path
-import hashlib, importlib.util, time
+import importlib.util, time
 
 ROOT = Path(__file__).resolve().parent
 ROUTE_PATH = Path(__file__).resolve().parent / 'yelp_sparse_bmm_route_v1.py'
-ROUTE_SHA256 = 'cc7becfd5b8f1007876b3df04b77a2c981c662b6718d2c17905dda17b5fcb9b9'
 
 _spec = importlib.util.spec_from_file_location('T456_original_public_Yelp_bmm', ROUTE_PATH)
 ROUTE = importlib.util.module_from_spec(_spec)
@@ -14,8 +13,7 @@ def specification():
     return dict(version='T456-Yelp-shared-TRAIN-strict-public-bmm-v1', route=ROUTE.specification(),
                 planned_epochs=75, planned_update_budget=16200,
                 scope='Shared S/D/G TRAIN and close backend only. Original native evaluation/archives/readers execute after instance-method and deterministic-flag restoration. No adjacency cache, coalescing shortcut, core or metric change.',
-                timing='Complete synchronized outer TRAIN scope replaces the original nested epoch seconds once. Required helper import/setup, instance installation/restoration, public sparse representation/conversion/forward/backward and close remain paid. No old timing refund.',
-                historical_proof_scope='Unchanged public route previously passed actual Yelp two-context A/A742field byte check and native-output tolerance. That is not a new full-trajectory determinism or speed claim for the current fused recipe.')
+                timing='Complete synchronized outer TRAIN scope replaces the original nested epoch seconds once. Required helper import/setup, instance installation/restoration, public sparse representation/conversion/forward/backward and close remain paid.')
 
 def _state(torch):
     return torch.are_deterministic_algorithms_enabled(), torch.is_deterministic_algorithms_warn_only_enabled()

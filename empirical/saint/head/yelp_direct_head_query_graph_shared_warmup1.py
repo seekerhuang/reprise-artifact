@@ -36,8 +36,7 @@ def adapter_view(original):
             version=VERSION,enabled=rule=='ordered',complete_dummy_warmups_per_capture=1,
             original_N_native_None_gradient_GEMM_mu_clip=True,
             one_shared_pool_cold_stream_and4096row_workspace=True,
-            all_dummy_cold_work_and_stage_paid_in_TRAIN=True,
-            requires_new_strict_byte_and_lifetime_qualification=True)
+            all_dummy_cold_work_and_stage_paid_in_TRAIN=True)
         return result
     result=SimpleNamespace(**vars(original))
     result.adapt,result.specification=adapt,specification

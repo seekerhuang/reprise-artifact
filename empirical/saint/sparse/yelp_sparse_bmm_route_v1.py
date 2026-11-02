@@ -72,5 +72,4 @@ def specification():
         cache_3D_adjacency=False, explicit_coalesce_or_dtype_conversion=False,
         precision='Original FP32, matmul TF32 false/highest; cuDNN flags not assigned',
         autograd='Public bmm native dense-input backward uses sparse transpose.bmm under the same strict flag',
-        native_2D_mm_called_by_candidate=False,
-        limits='Different FP32 sparse reduction algorithm and global deterministic execution configuration; not old trajectory equivalence, whole-model determinism proof or throughput claim.')
+        native_2D_mm_called_by_candidate=False)

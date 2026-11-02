@@ -3,9 +3,7 @@ from empirical.saint.head import yelp_head_output_reuse_v1 as previous
 
 VERSION = "SAINT-Yelp-originalN-nativeNone-graph-owned-output-reuse-v2"
 LIBRARY = previous.LIBRARY
-LIBRARY_SHA256 = previous.LIBRARY_SHA256
 REUSED_FILES = previous.REUSED_FILES
-DERIVED_CAPTURE_SOURCE_SHA256 = previous.DERIVED_CAPTURE_SOURCE_SHA256
 
 class HeadQuery(previous.HeadQuery):
     def __init__(self, *args, **kwargs):
@@ -76,7 +74,6 @@ def adapter_view(parent):
             original_two_current_queries_and_complete_Body2_consumption=True,
             all_cold_alias_construction_staging_capture_and_replay_paid=True,
             released_owner_checks_only_on_new_capture=True,
-            requires_strict_numerical_version_and_pointer_lifetime_GPU_qualification=True,
         )
         return result
     view = SimpleNamespace(**vars(parent))

@@ -181,8 +181,7 @@ def adapter_view(original):
             original_three_Adam_API_supports_and_live_hooks=True,
             native_Float32_kernel_LR_cast_from_original_Python_float=True,
             native_initial_zero_state_only_no_dummy_update=True,
-            import_setup_capture_staging_replay_all_paid=True,
-            requires_current_full_chain_strict_qualification=True)
+            import_setup_capture_staging_replay_all_paid=True)
         return result
     view=SimpleNamespace(**vars(original))
     view.adapt,view.specification=adapt,specification

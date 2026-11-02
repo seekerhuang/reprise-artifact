@@ -4,7 +4,7 @@ import math
 def install_fields(engine, pair=(1.0, 0.1), start=80, end=1200):
     pair = tuple((float(x) for x in pair))
     if pair not in ((1.0, 1.0), (1.0, 0.1)):
-        raise ValueError('Only identity qualification and the one declared Head pair')
+        raise ValueError('Head pair must be (1.0, 1.0) or (1.0, 0.1)')
     if any((not isinstance(x, int) or x < 0 or x % 2 for x in (start, end))) or start >= end:
         raise ValueError('An increasing pair-aligned interval is required')
     head = tuple(engine.model.convs[-1].parameters())

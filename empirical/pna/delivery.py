@@ -78,8 +78,9 @@ def isolated_rng(device):
 
 
 class Delivery:
-    def __init__(self, factory, data, loader, device):
+    def __init__(self, factory, data, loader, device, recording=None):
         self.factory, self.data, self.loader, self.device = factory, data, loader, device
+        self.recording = recording
         self.model = self.features = self.matrix = None
         self.setup_seconds = 0.0
 
@@ -90,7 +91,7 @@ class Delivery:
                 self.model = self.factory()
                 self.model.eval()
                 sync(self.device)
-                setup = Timer(self.device)
+                setup = Timer(self.device, self.recording, 'delivery_setup_seconds')
                 with setup:
                     self.features = self.data.x.to(self.device)
                     self.matrix = self.data.adj_t.to(self.device)
@@ -100,12 +101,14 @@ class Delivery:
             sync(self.device)
             self.model.load_state_dict(training_model.state_dict(), strict=True)
             sync(self.device)
-            preparation = Timer(self.device)
+            preparation = Timer(self.device, self.recording, 'delivery_preparation_seconds')
             with preparation:
                 average.install(self.model)
                 prefix(self.model, self.features, self.matrix)
             sync(self.device)
-            logits = self.model(loader=self.loader)
+            evaluation = Timer(self.device, self.recording, 'evaluation_seconds')
+            with evaluation:
+                logits = self.model(loader=self.loader)
             sync(self.device)
         sync(self.device)
         return logits, self.setup_seconds + preparation.seconds

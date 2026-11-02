@@ -7,7 +7,6 @@ HERE=Path(__file__).resolve().parent
 ROOT = HERE
 BACKEND=previous.BACKEND
 METADATA=previous.METADATA
-EXPECTED_METADATA_SHA256=previous.EXPECTED_METADATA_SHA256
 metadata=previous.metadata
 VERSION='Yelp-proven-canonical-batch-independent-metadata-owner-public-bmm-v3'
 

@@ -62,7 +62,7 @@ class ResidentXY:
     def verify(self):
         if self.incoming_versions != (self.data.x._version, self.data.y._version):
             raise RuntimeError('Original host attributes mutated')
-        return dict(full_XY_bytes=self.base_bytes, one_time_copy_seconds=self.setup_seconds, full_shapes=self.shapes, gather_calls=dict(self.calls), materialized_XY_bytes=dict(self.materialized_bytes), persistent_eval_XY_cache_bytes=self.materialized_bytes['eval'], scope='Full resident XY plus original eight precomputed eval groups now holding GPU XY; report both, not just1.15GB. Training groups are ephemeral. Full neighbor Y rows retained, no loss-row compression.')
+        return dict(full_XY_bytes=self.base_bytes, one_time_copy_seconds=self.setup_seconds, full_shapes=self.shapes, gather_calls=dict(self.calls), materialized_XY_bytes=dict(self.materialized_bytes), persistent_eval_XY_cache_bytes=self.materialized_bytes['eval'], scope='Full resident XY plus original eight precomputed eval groups now holding GPU XY. Training groups are ephemeral. Full neighbor Y rows retained, no loss-row compression.')
 
 class Registry:
 

@@ -50,6 +50,8 @@ python tests/core/run.py
 python tests/core/run.py --configs Flickr-PNA Reddit2-SAINT
 ```
 
+See [baselines/README.md](baselines/README.md) for baseline implementations, models, and upstream repositories.
+
 Directory structure:
 
 ```text
@@ -81,6 +83,14 @@ empirical/
   vendor/
     gas/               Required model and history components
     graphsaint/        Required sampling components
+baselines/
+  rest/                Reconstructed REST
+  pfnc/                Reconstructed PFNC–Products
+  labor/               LABOR models
+  graphsaint/          GraphSAINT models
+  vrgcn/               VR-GCN model
+  clustergcn/          Cluster-GCN model
+  vendor/pfnc/         Required PFN gradient component
 tests/
   core/
     run.py             Configuration-to-adapter map and entry point
